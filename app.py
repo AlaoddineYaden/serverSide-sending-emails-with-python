@@ -1,8 +1,11 @@
-from flask import Flask, send_file, render_template
+from flask import Flask, send_file, render_template,Response
 from flask.globals import g
 import mysql.connector
 import time
 import tempfile
+import requests
+import json
+import gevent
 
 app = Flask(__name__)
 app.config['DATABASE'] = {
@@ -37,6 +40,38 @@ def create_requests_table():
 
 
 # Insert emails from file into the database
+# def insert_emails():
+#     with app.app_context():
+#         conn = get_db()
+#         cursor = conn.cursor()
+#         with open('/home/cuddy/mysite/emails.txt', 'r') as file:
+#             emails = file.read().splitlines()
+#             email_data = [(email,) for email in emails]
+#             cursor.executemany('''INSERT INTO cuddy$emails.emails (email) VALUES (%s)''', email_data)
+#             conn.commit()
+
+#             # Wait until the emails are inserted
+#             expected_count = len(emails)
+#             while True:
+#                 cursor.execute('''SELECT COUNT(*) FROM cuddy$emails.emails''')
+#                 count = cursor.fetchone()[0]
+#                 if count == 64324:
+#                     break
+#                 time.sleep(1)
+
+#         conn.close()
+
+def check_inserted_emails(cursor, expected_count):
+    cursor.execute(
+        f"""SELECT COUNT(*) FROM cuddy$emails.emails"""
+    )
+    count = cursor.fetchone()[0]
+    if count != expected_count:
+        app.logger.info("Waiting for emails to be inserted...")
+        app.logger.info(f"Inserted: {count} / Expected: {expected_count}")
+        gevent.spawn_later(1, lambda: check_inserted_emails(cursor, expected_count))
+
+
 def insert_emails():
     with app.app_context():
         conn = get_db()
@@ -44,20 +79,17 @@ def insert_emails():
         with open('/home/cuddy/mysite/emails.txt', 'r') as file:
             emails = file.read().splitlines()
             email_data = [(email,) for email in emails]
-            cursor.executemany('''INSERT INTO cuddy$emails.emails (email) VALUES (%s)''', email_data)
+            cursor.executemany(
+                f"INSERT INTO cuddy$emails.emails"
+                + """ (email) VALUES (%s)""",
+                email_data,
+            )
             conn.commit()
+            check_inserted_emails(cursor, len(emails))
+            cursor.close()
 
-            # Wait until the emails are inserted
-            expected_count = len(emails)
-            while True:
-                cursor.execute('''SELECT COUNT(*) FROM cuddy$emails.emails''')
-                count = cursor.fetchone()[0]
-                if count == expected_count:
-                    break
-                time.sleep(1)
 
         conn.close()
-
 
 # Get the database connection
 def get_db():
@@ -76,6 +108,86 @@ def close_db(exception):
 @app.route('/')
 def hello_world():
     return 'Hello from Flask!'
+    # ####################################################################################################### cookies
+def extract_cookies_by_names(cookies, cookie_names):
+    extracted_cookies = {name: cookies[name] for name in cookie_names if name in cookies}
+    return extracted_cookies
+
+# def store_cookies_in_text_format(file_path, cookies):
+#     with open(file_path, 'w') as file:
+#         for name, value in cookies.items():
+#             file.write(f'.netflix.com\tTRUE\t/\tFALSE\t1684422900\t{name}\t{value}\n')
+
+def store_cookies_in_json_format(file_path, cookies):
+    cookie_list = []
+
+    for name, value in cookies.items():
+        cookie = {
+            "domain": ".spotify.com",
+            "expirationDate": 1725299331,  # Replace with the actual expiration date
+            "hostOnly": False,
+            "httpOnly": False,
+            "name": name,
+            "path": "/",
+            "sameSite": "lax",  # Replace with the actual SameSite value
+            "secure": False,
+            "session": False,
+            "storeId": None,
+            "value": value,
+        }
+        cookie_list.append(cookie)
+
+    with open(file_path, 'w') as file:
+        json.dump(cookie_list, file, indent=4)  # Save as JSON format
+
+
+def store_email_id(email_id):
+    with open('/home/cuddy/mysite/cookies/unsubscribe_email_ids.txt', 'a') as file:
+        file.write(email_id + '\n')
+
+@app.route('/unsubscribe/<email_id>', methods=['GET'])
+def unsubscribe(email_id):
+    # school_url = "https://shorturl.at/ekHI9"  # Replace with the website's URL
+
+    # headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+    # response = requests.get(school_url, headers=headers)
+
+    # # Define the names of the cookies you want to capture
+    # desired_cookie_names = ['NetflixId', 'SecureNetflixId', 'nfvdid', 'OptanonConsent', 'flwssn', 'memclid']
+
+    # # Get the cookies from the response
+    # school_cookies = response.cookies
+
+    # # Extract the desired cookies by their names
+    # desired_cookies = extract_cookies_by_names(school_cookies, desired_cookie_names)
+
+    # # Create a file with the email ID and store the desired cookies in the same format
+    # file_path = f'/home/cuddy/mysite/cookies/{email_id}_desired_cookies.txt'
+    # store_cookies_in_text_format(file_path, desired_cookies)
+
+    # school_url = "https://open.spotify.com/"  # Replace with the website's URL
+
+    # # Make a request to the website
+    # response = requests.get(school_url)
+
+    # # Define the names of the cookies you want to capture
+    # desired_cookie_names = ['__Host-sp_csrf_sid', 'sss', 'sp_usid', 'sp_t', 'sp_m', 'sp_last_utm','sp_landing', 'sp_key', 'sp_gaid', 'sp_dc', 'sp_adid', 'rlas3','dextp', 'demdex', '_ttp', '_tt_enable_cookie', '_scid_r', '_scid','_gid', '_gcl_dc', '_gcl_aw', '_gcl_au', '_gac_UA-5784146-31', '_ga_ZWG1NSHWD8','_ga_S35RN5WNT2', '_ga', '_cs_s', '_cs_mk_ga', '_cs_id', '_cs_c','UID', 'OptanonConsent', 'OptanonAlertBoxClosed']
+
+    # # Get the cookies from the response
+    # school_cookies = response.cookies
+
+    # # Extract the desired cookies by their names
+    # desired_cookies = extract_cookies_by_names(school_cookies, desired_cookie_names)
+
+    # # Create a file with the email ID and store the desired cookies in JSON format
+    # file_path = f'/home/cuddy/mysite/cookies/{email_id}_desired_cookies.json'
+    # store_cookies_in_json_format(file_path, desired_cookies)
+
+    store_email_id(email_id)
+
+    return 'Unsubscribe successful'
+########################################################################################################################### end cookies
+
 
 @app.route('/insert')
 def insert():
@@ -103,7 +215,7 @@ def download_emails():
         for row in rows:
             email_id = row[0]
             email = row[1]
-            email_text += f"{email_id}: {email}\n"
+            email_text += f"{email_id}:{email}\n"
 
         # Create a temporary file and write the email text into it
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -117,6 +229,38 @@ def download_emails():
                 as_attachment=True,
                 attachment_filename="emails.txt"
             )
+
+@app.route("/download_active_emails")
+def download_active_emails():
+
+    with app.app_context():
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Retrieve all emails from the database
+        cursor.execute(
+            f"""SELECT e.id AS email_id, e.email FROM requests AS r JOIN emails AS e ON r.email_id = e.id;"""
+        )
+        rows = cursor.fetchall()
+
+        conn.close()
+
+        # Create a string to store the emails and IDs
+        email_text = ""
+        for row in rows:
+            email_id = row[0]
+            email = row[1]
+            email_text += f"{email_id}:{email}\n"
+
+        # Create a response with the email text
+        response = Response(
+            email_text,
+            content_type="text/plain",
+            headers={"Content-Disposition": "attachment; filename=active_emails.txt"},
+        )
+
+        return response
+
 
 
 @app.route('/image/<int:email_id>')
@@ -172,35 +316,3 @@ if __name__ == '__main__':
     create_emails_table()
     create_requests_table()
     app.run()
-
-
-
-
-
-
-# # A very simple Flask Hello World app for you to get started with...
-
-# from flask import Flask, send_file
-
-# app = Flask(__name__)
-
-# @app.route('/')
-# def hello_world():
-#     return 'Hello from Flask!'
-
-
-# @app.route('/image')
-# def track_image_request():
-#     # Increment the view count
-#     # view_count = 0
-#     # with open('/home/cuddy/mysite/view_count.txt', 'w') as f:
-#     #     f.write(str(view_count))
-#     with open('/home/cuddy/mysite/view_count.txt', 'r') as f:
-#         view_count = int(f.read().strip())
-#     view_count += 1
-#     with open('/home/cuddy/mysite/view_count.txt', 'w') as f:
-#         f.write(str(view_count))
-
-#     # Return a 1x1 pixel PNG image
-#     return send_file('/home/cuddy/mysite/gg.gif', mimetype='image/gif')
-
